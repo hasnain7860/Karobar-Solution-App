@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Loader2 } from 'lucide-react';
@@ -8,15 +8,17 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
-const loginSchema = z.object({
-  email: z.string().email({ message: 'Please enter a valid email address.' }),
-  password: z.string().min(1, { message: 'Password is required.' }),
-});
-
-export default function LoginPage() {
+// --- LOGIN LOGIC COMPONENT (Moved inside) ---
+// Yeh component useSearchParams use karta hai, is liye isay Suspense mein wrap karna zaroori hai
+function LoginForm() {
   const [apiError, setApiError] = useState(null);
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  const loginSchema = z.object({
+    email: z.string().email({ message: 'Please enter a valid email address.' }),
+    password: z.string().min(1, { message: 'Password is required.' }),
+  });
 
   const {
     register,
@@ -42,38 +44,21 @@ export default function LoginPage() {
         throw new Error(data.message || 'Login failed');
       }
 
-      // --- LOGIC UPDATE FOR NEW DEVICE SYNC ---
-      
+      // --- REDIRECT LOGIC ---
       const redirectPath = searchParams.get('redirect');
       const userRole = data.user.role;
-
-      // 1. Sabse pehle: Agar Onboarding pending hai, to koi aur raasta nahi.
-      if (userRole === 'pending_onboarding') {
-         router.push('/onboarding');
-         return;
-      } 
-
-      // 2. Check: Kya yeh New Device hai? (Local Data Check)
-      // Hum check karte hain ke kya last sync ka time save hai browser mein?
       const lastSyncTime = localStorage.getItem('last_sync_time');
 
-      if (!lastSyncTime) {
-         // CASE: New Device or Cleared Cache.
-         // User ko force karein ke wo pehle data sync kare.
-         console.log("New device detected. Redirecting to Sync...");
+      if (userRole === 'pending_onboarding') {
+         router.push('/onboarding');
+      } else if (!lastSyncTime) {
          router.push('/sync');
-      } 
-      else {
-         // CASE: Existing Device with Data.
-         // Agar URL mein redirect tha to wahan, warna dashboard.
-         if (redirectPath) {
-            router.push(redirectPath);
-         } else {
-            router.push('/dashboard');
-         }
+      } else if (redirectPath) {
+         router.push(redirectPath);
+      } else {
+         router.push('/dashboard');
       }
 
-      // Middleware cookie update catch kare
       router.refresh(); 
 
     } catch (err) {
@@ -82,14 +67,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="w-full">
-      <header className="mb-8 -mt-2">
-        <Link href="/" className="inline-flex items-center text-sm text-text-medium hover:text-text-dark transition-colors">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Home
-        </Link>
-      </header>
-      
+    <>
       <div className="flex justify-center mb-8">
         <h1 className="text-2xl font-bold text-brand">Karobar Solution</h1>
       </div>
@@ -170,8 +148,26 @@ export default function LoginPage() {
           </Link>
         </p>
       </footer>
-    </div>
+    </>
   );
 }
 
+// --- MAIN PAGE EXPORT (Wrapper) ---
+export default function LoginPage() {
+  return (
+    <div className="w-full">
+      <header className="mb-8 -mt-2">
+        <Link href="/" className="inline-flex items-center text-sm text-text-medium hover:text-text-dark transition-colors">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Home
+        </Link>
+      </header>
 
+      {/* SUSPENSE BOUNDARY: Yeh zaroori hai build error hatane ke liye */}
+      {/* Jab tak search params load nahi hote, fallback loader dikhega */}
+      <Suspense fallback={<div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 animate-spin text-brand" /></div>}>
+        <LoginForm />
+      </Suspense>
+    </div>
+  );
+}
